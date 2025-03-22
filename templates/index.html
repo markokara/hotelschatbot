@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>Mesajlaşma Sistemi</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <!-- Hata Mesajları -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <ul class="flashes">
+        {% for category, message in messages %}
+          <li class="{{ category }}">{{ message }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+
+  <!-- Üst Kısım: AI Toggle -->
+  <div class="header-toggle">
+    <h2>AI ON/OFF</h2>
+    <label class="switch">
+      <input type="checkbox" id="n8nToggle">
+      <span class="slider"></span>
+    </label>
+    <span id="n8n-status-text">AI OFF</span>
+  </div>
+
+  <!-- Chat Container -->
+  <div class="container">
+    <!-- Sol Sidebar: Telefon Listesi -->
+    <div class="sidebar">
+      <h3>Konuşmalar</h3>
+      <ul class="phone-list" id="phone-list">
+        {% for phone in phone_list %}
+          <li onclick="selectPhone('{{ phone }}')">{{ phone }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    <!-- Sağ Sohbet Alanı -->
+    <div class="chat-area">
+      <div class="chat-header" id="current-phone">Mesajlar</div>
+      <div id="chat-messages"></div>
+      <div class="chat-input">
+        <textarea id="message" placeholder="Mesajınızı yazın..."></textarea>
+        <button onclick="sendMessage()">Gönder</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- jQuery -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script>
+    var allMessages = {{ messages | tojson }};
+    var phoneList = {{ phone_list | tojson }};
+     // Toggle durumunu localStorage'dan alıp uygula
+     $(document).ready(function() {
+      var savedToggle = localStorage.getItem("n8nToggleState");
+      if (savedToggle && savedToggle === "on") {
+        $("#n8nToggle").prop("checked", true);
+        $("#n8n-status-text").text("AI ON");
+      } else {
+        $("#n8nToggle").prop("checked", false);
+        $("#n8n-status-text").text("AI OFF");
+      }
+    });
+
+    // Toggle Switch Event Listener
+    $(document).ready(function() {
+      $("#n8nToggle").change(function() {
+        let isN8NActive = $(this).is(":checked") ? "on" : "off";
+        localStorage.setItem("n8nToggleState", isN8NActive);
+        $("#n8n-status-text").text(isN8NActive.toUpperCase());
+        $.ajax({
+          url: "https://mkara.app.n8n.cloud/webhook/733fd66c-ae02-478b-a2b1-d0112ac94101",
+          type: "GET",
+          data: { status: isN8NActive },
+          success: function(response) {
+            console.log("N8N güncellendi:", response);
+          },
+          error: function() {
+            console.log("N8N değişikliği başarısız!");
+          }
+        });
+      });
+    });
+
+    // Kullanıcı yazıyor mu? (Textarea focus/blur)
+    let isTyping = false;
+    document.addEventListener('DOMContentLoaded', function() {
+      let messageBox = document.getElementById("message");
+      messageBox.addEventListener("focus", function() { isTyping = true; });
+      messageBox.addEventListener("blur", function() { isTyping = false; });
+    });
+
+    // Eğer daha önce seçilen telefon varsa, sayfa yüklendiğinde otomatik yükle
+    document.addEventListener('DOMContentLoaded', function() {
+      let savedPhone = localStorage.getItem("selectedPhone");
+      if (savedPhone) {
+        loadMessages(savedPhone);
+      }
+    });
+
+    
+
+    function selectPhone(phone) {
+      localStorage.setItem("selectedPhone", phone);
+      loadMessages(phone);
+    }
+
+    function loadMessages(phone) {
+      $("#current-phone").text("Mesajlar - " + phone);
+      let chatMessages = $("#chat-messages");
+      chatMessages.empty();
+      if (allMessages[phone]) {
+        allMessages[phone].forEach(function(msg) {
+          let div = $("<div>");
+          let date = new Date(msg.date_created).toLocaleString();
+          if (msg.message_guest) {
+            div.addClass("message left-message");
+            div.html(msg.message_guest + `<div class="message-date">${date}</div>`);
+          } else if (msg.message_agent) {
+            div.addClass("message right-message");
+            div.html(msg.message_agent + `<div class="message-date">${date}</div>`);
+          } else if (msg.message_ai) {
+            div.addClass("message right-message ai-message");
+            div.html(msg.message_ai + `<div class="message-date">${date}</div>`);
+          }
+          chatMessages.append(div);
+        });
+      } else {
+        chatMessages.append("<div class='message'>Mesaj bulunamadı.</div>");
+      }
+      scrollToBottom();
+    }
+
+    function scrollToBottom() {
+      let chatMessages = $("#chat-messages");
+      chatMessages.scrollTop(chatMessages.prop("scrollHeight"));
+    }
+
+    function sendMessage() {
+      let currentPhoneText = $("#current-phone").text();
+      let phone = currentPhoneText.split(" - ")[1];
+      let messageContent = $("#message").val();
+      if (!phone || !messageContent) {
+        alert("Telefon numarası veya mesaj boş olamaz!");
+        return;
+      }
+      $.ajax({
+        url: "/send",
+        type: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({ phone: phone.trim(), message: messageContent }),
+        success: function(response) {
+          alert("Mesaj başarıyla gönderildi!");
+          $("#message").val("");
+          loadMessages(phone.trim());
+        },
+        error: function(xhr) {
+          alert("Mesaj gönderilemedi: " + xhr.responseText);
+        }
+      });
+    }
+
+
+    // Otomatik güncelleme: Eğer kullanıcı yazmıyorsa, her 3 saniyede bir sayfa yenileme
+    document.addEventListener('DOMContentLoaded', function() {
+      setInterval(function() {
+        if (!isTyping) {
+          // Tam sayfa reload yerine, isterseniz sadece mesaj ve telefon listesi güncelleyebilirsiniz.
+          // Ancak tam sayfa reload kullanırsak, toggle durumu ve seçili telefon localStorage sayesinde korunur.
+          window.location.reload();
+        }
+      }, 11000);
+    });
+
+  </script>
+</body>
+</html>

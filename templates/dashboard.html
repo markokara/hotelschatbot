@@ -1,0 +1,28 @@
+<!-- templates/dashboard.html -->
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Dashboard</title>
+  </head>
+  <body>
+    <h1>Dashboard</h1>
+    
+    <p>Hoş geldiniz, {{ user.email }}!</p>
+    
+    <h2>Özel Mesajlar</h2>
+    <ul>
+      {% for message in special_messages %}
+        <li>{{ message }}</li>
+      {% endfor %}
+    </ul>
+    
+    <h2>Misafir Telefon Numaraları</h2>
+    <ul>
+      {% for phone in guest_phone_numbers %}
+        <li>{{ phone }}</li>
+      {% endfor %}
+    </ul>
+    
+  </body>
+</html>
